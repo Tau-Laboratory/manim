@@ -10,6 +10,7 @@ import numpy as np
 
 from manim._config import config
 from manim.animation.animation import Animation, prepare_animation
+from manim.animation.transform import Transform
 from manim.constants import RendererType
 from manim.mobject.mobject import Group, Mobject
 from manim.mobject.opengl.opengl_mobject import OpenGLGroup
@@ -242,6 +243,9 @@ class Succession(AnimationGroup):
                 introduced_mobjects.add(anim.mobject)
             elif anim.mobject not in introduced_mobjects:
                 unintroduced_mobjects.append(anim.mobject)
+
+            if isinstance(anim, Transform) and anim.replace_mobject_with_target_in_scene:
+                introduced_mobjects.add(anim.target_mobject)
         return remove_list_redundancies(unintroduced_mobjects)
 
     def begin(self) -> None:
@@ -255,12 +259,19 @@ class Succession(AnimationGroup):
     def finish(self) -> None:
         while self.active_animation is not None:
             self.next_animation()
+ 
+    def clean_up_from_scene(self, scene: Scene) -> None:
+        self._on_finish(scene)
+        last_animation = self.animations[-1]
+        if self.remover:
+            last_animation.remover = self.remover
+        last_animation.clean_up_from_scene(scene)
 
     def update_mobjects(self, dt: float) -> None:
         if self.active_animation:
             self.active_animation.update_mobjects(dt)
 
-    def _setup_scene(self, scene) -> None:
+    def _setup_scene(self, scene: Scene) -> None:
         if scene is None:
             return
         if self.is_introducer():
@@ -288,8 +299,12 @@ class Succession(AnimationGroup):
 
         This method is called right when the active animation finishes.
         """
+
         if self.active_animation is not None:
             self.active_animation.finish()
+            if self.active_index + 1 < len(self.animations):
+                self.active_animation.clean_up_from_scene(self.scene)
+                self.update_mobjects(0)
         self.update_active_animation(self.active_index + 1)
 
     def interpolate(self, alpha: float) -> None:
